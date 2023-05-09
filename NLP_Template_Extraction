@@ -1,0 +1,74 @@
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+from nltk.parse import CoreNLPParser
+from collections import defaultdict
+
+# Set up NLTK resources
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('corenlp')
+
+# Set up Stanford CoreNLP server (make sure to have downloaded and unzipped the CoreNLP package)
+stanford_parser = CoreNLPParser(url='http://localhost:9000')
+
+# Define function for preprocessing text
+def preprocess(text):
+    # Tokenize text into words
+    words = word_tokenize(text.lower())
+    
+    # Remove stop words
+    stop_words = set(stopwords.words('english'))
+    words = [word for word in words if word not in stop_words]
+    
+    # Lemmatize words
+    lemmatizer = WordNetLemmatizer()
+    words = [lemmatizer.lemmatize(word) for word in words]
+    
+    # Join words back into text
+    text = ' '.join(words)
+    
+    return text
+
+# Define function for extracting templates
+def extract_templates(text):
+    # Preprocess text
+    text = preprocess(text)
+    
+    # Parse sentences using Stanford CoreNLP parser
+    sentences = list(stanford_parser.raw_parse(text))
+    
+    # Initialize dictionary for templates
+    templates = defaultdict(list)
+    
+    # Iterate over each sentence
+    for sentence in sentences:
+        # Extract POS tags and lemmas for words in sentence
+        tags = [tag for _, tag in sentence.pos()]
+        lemmas = [lemma for _, _, lemma in sentence.parse().triples() if lemma != '-NONE-']
+        
+        # Extract named entities in sentence
+        entities = nltk.ne_chunk(sentence.pos(), binary=False)
+        named_entities = [' '.join(word for word, tag in entity) for entity in entities if isinstance(entity, nltk.tree.Tree)]
+        
+        # Extract subject-verb-object templates
+        for i, tag in enumerate(tags):
+            if tag.startswith('V'): # verb
+                for j in range(i+1, len(tags)):
+                    if tags[j].startswith('N'): # noun
+                        template = ' '.join([lemmas[i], ' '.join(named_entities), lemmas[j]])
+                        templates[template].append(sentence)
+                        break
+    
+    # Return templates
+    return templates
+
+# Example usage
+text = "John Smith is a software engineer at ABC Company. He develops software applications using Java and Python."
+templates = extract_templates(text)
+for template, sentences in templates.items():
+    print(f"Template: {template}")
+    print(f"Sentences: {sentences}\n")
